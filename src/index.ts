@@ -1,6 +1,7 @@
-import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap } from '@nodegui/nodegui';
+import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap, QMovie } from '@nodegui/nodegui';
 import favIcon from '../assets/favicon.png';
 import logoPath from '../assets/think-brq.png';
+import loadingSpinner from '../assets/ajax-loader.gif'
 
 const win = new QMainWindow();
 win.setWindowTitle("Billing Sheet Processor");
@@ -60,10 +61,17 @@ const outputFileDialog = new QLineEdit();
 outputFileDialog.setObjectName('outputFileDialog');
 outputFileWidgetLayout.addWidget(outputFileDialog);
 // Process button
-const button = new QPushButton();
-button.setObjectName('processButton')
-button.setText('Process');
-button.setIcon(new QIcon(favIcon));
+const processButton = new QPushButton();
+processButton.setObjectName('processButton')
+processButton.setText('Process');
+processButton.setIcon(new QIcon(favIcon));
+// Loading spinner
+const spinLabel = new QLabel();
+const spinMovie = new QMovie();
+spinMovie.setFileName(loadingSpinner);
+spinMovie.start();
+spinLabel.setMovie(spinMovie);
+spinLabel.hide();
 
 const label2 = new QLabel();
 label2.setText("World");
@@ -76,9 +84,22 @@ rootLayout.addWidget(label);
 rootLayout.addWidget(csvFileWidget);
 rootLayout.addWidget(templateFileWidget);
 rootLayout.addWidget(outputFileWidget);
-rootLayout.addWidget(button);
+rootLayout.addWidget(processButton);
+rootLayout.addWidget(spinLabel);
 //rootLayout.addWidget(label2);
 win.setCentralWidget(centralWidget);
+
+
+// Event handling
+processButton.addEventListener('clicked', (checked) => {
+    processButton.hide();
+    spinLabel.show();
+    setTimeout(function() {
+        processButton.show();
+        spinLabel.hide();
+    }, 3000);
+});
+
 win.setStyleSheet(
   `
     #myroot {
@@ -99,19 +120,20 @@ win.setStyleSheet(
     }
     #csvFileWidget {
         margin-top: 10px;
-        margin-left: 61px;
+        margin-left: 5px;
         flex-direction: row;
         font-size: 20px;
         
     }
     #templateFileWidget {
         margin-top: 10px;
-        margin-left: 35px;
+        margin-left: -24px;
         flex-direction: row;
         font-size: 20px;
     }
     #outputFileWidget {
         margin-top: 10px;
+        margin-left: -60px;
         flex-direction: row;
         font-size: 20px;
     }
