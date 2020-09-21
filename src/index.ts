@@ -1,4 +1,4 @@
-import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap, QMovie } from '@nodegui/nodegui';
+import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap, QMovie, QFileDialog } from '@nodegui/nodegui';
 import favIcon from '../assets/favicon.png';
 import logoPath from '../assets/think-brq.png';
 import loadingSpinner from '../assets/ajax-loader.gif'
@@ -31,9 +31,17 @@ const csvFileLabel = new QLabel();
 csvFileLabel.setText('CSV File: ');
 csvFileWidgetLayout.addWidget(csvFileLabel);
 
-const csvFileDialog = new QLineEdit();
-csvFileDialog.setObjectName('csvFileialog');
-csvFileWidgetLayout.addWidget(csvFileDialog);
+const csvFileInputPath = new QLineEdit();
+csvFileInputPath.setObjectName('csvFileialog');
+csvFileWidgetLayout.addWidget(csvFileInputPath);
+
+const csvFileDialog = new QFileDialog()
+const csvFileBrowseButton = new QPushButton()
+csvFileBrowseButton.setText('Browse')
+csvFileBrowseButton.addEventListener('clicked', () => {
+    csvFileDialog.exec();
+})
+csvFileWidgetLayout.addWidget(csvFileBrowseButton);
 // Template file widget
 const templateFileWidget = new QWidget();
 const templateFileWidgetLayout = new FlexLayout();
@@ -44,9 +52,17 @@ const templateFileLabel = new QLabel();
 templateFileLabel.setText('Template File: ');
 templateFileWidgetLayout.addWidget(templateFileLabel);
 
-const templateFileDialog = new QLineEdit();
-templateFileDialog.setObjectName('templateFileialog');
-templateFileWidgetLayout.addWidget(templateFileDialog);
+const templateFileInputPath = new QLineEdit();
+templateFileInputPath.setObjectName('templateFileialog');
+templateFileWidgetLayout.addWidget(templateFileInputPath);
+
+const templateFileDialog = new QFileDialog()
+const templateFileBrowseButton = new QPushButton()
+templateFileBrowseButton.setText('Browse')
+templateFileBrowseButton.addEventListener('clicked', () => {
+    templateFileDialog.exec();
+})
+templateFileWidgetLayout.addWidget(templateFileBrowseButton);
 // Output file widget
 const outputFileWidget = new QWidget();
 const outputFileWidgetLayout = new FlexLayout();
@@ -119,21 +135,19 @@ win.setStyleSheet(
         margin-top: 0px;
     }
     #csvFileWidget {
-        margin-top: 10px;
-        margin-left: 5px;
+        margin-left: 59px;
         flex-direction: row;
         font-size: 20px;
         
     }
     #templateFileWidget {
-        margin-top: 10px;
-        margin-left: -24px;
+        margin-left: 32px;
         flex-direction: row;
         font-size: 20px;
     }
     #outputFileWidget {
-        margin-top: 10px;
-        margin-left: -60px;
+        margin-top: 5px;
+        margin-left: -87px;
         flex-direction: row;
         font-size: 20px;
     }
