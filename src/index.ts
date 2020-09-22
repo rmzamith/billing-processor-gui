@@ -148,6 +148,8 @@ function processBilling(csvDataFilePath:string, templateFilePath:string, outputF
 
 const win = new QMainWindow();
 win.setWindowTitle("Billing Sheet Processor");
+const icon = new QIcon (favIcon);
+win.setWindowIcon (icon);
 
 // Root view
 const centralWidget = new QWidget();
@@ -336,13 +338,13 @@ win.setStyleSheet(
         
     }
     #templateFileWidget {
-        margin-left: 32px;
+        margin-left: 30px;
         flex-direction: row;
         font-size: 20px;
     }
     #outputFileWidget {
-        margin-top: 5px;
-        margin-left: -87px;
+        margin-top: 3px;
+        margin-left: -92px;
         flex-direction: row;
         font-size: 20px;
     }
