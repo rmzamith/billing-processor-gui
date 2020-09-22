@@ -11,7 +11,11 @@
     "debug": "webpack && qode --inspect ./dist/index.js"
   },
   "dependencies": {
-    "@nodegui/nodegui": "^0.25.0"
+    "@nodegui/nodegui": "^0.25.0",
+    "csv-parser": "^2.3.3",
+    "docxtemplater": "^3.19.3",
+    "node-datetime": "^2.1.2",
+    "pizzip": "^3.0.6"
   },
   "devDependencies": {
     "@nodegui/packer": "^1.4.1",

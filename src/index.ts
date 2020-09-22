@@ -3,6 +3,149 @@ import favIcon from '../assets/favicon.png';
 import logoPath from '../assets/think-brq.png';
 import loadingSpinner from '../assets/ajax-loader.gif'
 
+
+////////////////////////////////// logic /////////////////////////////////////////
+
+const PizZip = require('pizzip');
+const Docxtemplater = require('docxtemplater');
+const fs = require('fs');
+const csv = require('csv-parser');
+const dateTime = require('node-datetime');
+
+// The error object contains additional information when logged with JSON.stringify (it contains a properties object containing all suberrors).
+function replaceErrors(key :any, value :any[]) {
+    if (value instanceof Error) {
+        return Object.getOwnPropertyNames(value).reduce(function(error: any, key: any) {
+            error[key] = value[key];
+            return error;
+        }, {});
+    }
+    return value;
+}
+
+function errorHandler(error :any) {
+    console.log(JSON.stringify({error: error}, replaceErrors));
+
+    if (error.properties && error.properties.errors instanceof Array) {
+        const errorMessages = error.properties.errors.map(function (error :any) {
+            return error.properties.explanation;
+        }).join("\n");
+        console.log('errorMessages', errorMessages);
+        // errorMessages is a humanly readable message looking like this :
+        // 'The tag beginning with "foobar" is unopened'
+    }
+    throw error;
+}
+
+function insertSpacesOnValuesFromKey(key: string, value: string) {
+    var realKeyLength = key.length + 2;
+    if(realKeyLength > value.length) {
+        var sizeTabDiff = (realKeyLength - value.length)/8;
+        for(var i = 0; i <= sizeTabDiff; i++) {
+            value = value + "\t";
+        }
+    }
+    return value;
+}
+
+function appendTabsToKeepFormat(element :any) {
+    for(var key in element) {
+        element[key] = insertSpacesOnValuesFromKey(key, element[key]);
+    }
+}
+
+function removeFirstLineFromCSV(csvDataFilePath:string) {
+    var csvData = fs.readFileSync(csvDataFilePath);
+    csvData = csvData.toString(); // stringify buffer
+    var position = csvData.toString().indexOf('\n'); // find position of new line element
+    if (position != -1) { // if new line element found
+        csvData = csvData.substr(position + 1);
+    }
+    const treatedCsvFilePath :string = csvDataFilePath+".treated";
+    fs.writeFileSync(treatedCsvFilePath, csvData);
+
+    return treatedCsvFilePath;
+}
+
+function evaluateOutputName(outputNamePattern :string, csvEntry :any) {
+    let matches = outputNamePattern.match(/{(.*?)\}/g);
+    var diffEntriesOnName = false;
+    if(matches != null) {
+        matches.forEach(element => {
+            const currKey = element.substring(1, element.length-1);
+            var currVal = csvEntry[currKey];
+            if(currVal == null) {
+                currVal = "NOT_FOUND";
+            } else {
+                diffEntriesOnName = true;
+            }
+            outputNamePattern = outputNamePattern.replace(element,currVal);
+        });
+    }
+    if(!diffEntriesOnName) {
+        outputNamePattern = outputNamePattern+Math.floor(Math.random() * 100000);
+    }
+    return outputNamePattern;
+}
+
+function createOutputDir() {
+    var dt = dateTime.create();
+    var outputDir = "./billing_sheet_output_"+dt.format('Ymd_HMS');
+
+    if (!fs.existsSync(outputDir)){
+        fs.mkdirSync(outputDir);
+    }
+    return outputDir;
+}
+
+
+
+function processBilling(csvDataFilePath:string, templateFilePath:string, outputFileNamePattern:string) {
+    // INIT - TEMPLATE LOAD
+    var content = fs.readFileSync(templateFilePath, 'binary');
+
+    // INIT - LOAD CSV
+    const treatedCsvFilePath :string = removeFirstLineFromCSV(csvDataFilePath);
+    const results: any[] = [];
+    fs.createReadStream(treatedCsvFilePath)
+        .pipe(csv())
+        .on('data', (data :any) => results.push(data))
+        .on('end', () => {
+            results.forEach(element => {
+                // INIT - DOC VAR REPLACEMENT
+                appendTabsToKeepFormat(element);
+                var zip = new PizZip(content);
+                var doc;
+                try {
+                    doc = new Docxtemplater(zip);
+                } catch(error) {
+                    errorHandler(error);
+                }
+
+                doc.setData(element);
+
+                try {
+                    doc.render()
+                }
+                catch (error) {
+                    errorHandler(error);
+                }
+                
+                var buf = doc.getZip()
+                            .generate({type: 'nodebuffer'});
+                
+                // INIT - SAVE FILE
+                var outputDir = createOutputDir();
+                var outputFileName = evaluateOutputName(outputFileNamePattern, element);
+                fs.writeFileSync(outputDir+"/"+outputFileName+'.docx', buf);
+            });
+        });
+
+    fs.unlinkSync(treatedCsvFilePath);
+    
+}
+////////////////////////////////// logic /////////////////////////////////////////
+
 const win = new QMainWindow();
 win.setWindowTitle("Billing Sheet Processor");
 
@@ -33,6 +176,7 @@ csvFileWidgetLayout.addWidget(csvFileLabel);
 
 const csvFileInputPath = new QLineEdit();
 csvFileInputPath.setObjectName('csvFileialog');
+csvFileInputPath.setReadOnly(true);
 csvFileWidgetLayout.addWidget(csvFileInputPath);
 
 const csvFileDialog = new QFileDialog()
@@ -40,6 +184,11 @@ const csvFileBrowseButton = new QPushButton()
 csvFileBrowseButton.setText('Browse')
 csvFileBrowseButton.addEventListener('clicked', () => {
     csvFileDialog.exec();
+    csvFileDialog.setNameFilter('Images (*.csv)');
+    const csvSelectedFile = csvFileDialog.selectedFiles();
+    if(csvSelectedFile.length > 0) {
+        csvFileInputPath.setText(csvSelectedFile[0]);
+    }
 })
 csvFileWidgetLayout.addWidget(csvFileBrowseButton);
 // Template file widget
@@ -54,6 +203,7 @@ templateFileWidgetLayout.addWidget(templateFileLabel);
 
 const templateFileInputPath = new QLineEdit();
 templateFileInputPath.setObjectName('templateFileialog');
+templateFileInputPath.setReadOnly(true);
 templateFileWidgetLayout.addWidget(templateFileInputPath);
 
 const templateFileDialog = new QFileDialog()
@@ -61,6 +211,11 @@ const templateFileBrowseButton = new QPushButton()
 templateFileBrowseButton.setText('Browse')
 templateFileBrowseButton.addEventListener('clicked', () => {
     templateFileDialog.exec();
+    templateFileDialog.setNameFilter('Images (*.docx)');
+    const templateSelectedFiles = templateFileDialog.selectedFiles();
+    if(templateSelectedFiles.length > 0) {
+        templateFileInputPath.setText(templateSelectedFiles[0]);
+    }
 })
 templateFileWidgetLayout.addWidget(templateFileBrowseButton);
 // Output file widget
@@ -105,15 +260,17 @@ rootLayout.addWidget(spinLabel);
 //rootLayout.addWidget(label2);
 win.setCentralWidget(centralWidget);
 
-
 // Event handling
 processButton.addEventListener('clicked', (checked) => {
     processButton.hide();
     spinLabel.show();
-    setTimeout(function() {
-        processButton.show();
-        spinLabel.hide();
-    }, 3000);
+    processBilling(csvFileInputPath.text(), templateFileInputPath.text(), outputFileDialog.text());
+    processButton.show();
+    spinLabel.hide();
+    // setTimeout(function() {
+    //     processButton.show();
+    //     spinLabel.hide();
+    // }, 3000);
 });
 
 win.setStyleSheet(
