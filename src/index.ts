@@ -175,16 +175,16 @@ csvFileLabel.setText('CSV File: ');
 csvFileWidgetLayout.addWidget(csvFileLabel);
 
 const csvFileInputPath = new QLineEdit();
-csvFileInputPath.setObjectName('csvFileialog');
+csvFileInputPath.setObjectName('csvFileDialog');
 csvFileInputPath.setReadOnly(true);
 csvFileWidgetLayout.addWidget(csvFileInputPath);
 
-const csvFileDialog = new QFileDialog()
-const csvFileBrowseButton = new QPushButton()
+const csvFileDialog = new QFileDialog();
+csvFileDialog.setNameFilter('*.csv');
+const csvFileBrowseButton = new QPushButton();
 csvFileBrowseButton.setText('Browse')
 csvFileBrowseButton.addEventListener('clicked', () => {
     csvFileDialog.exec();
-    csvFileDialog.setNameFilter('Images (*.csv)');
     const csvSelectedFile = csvFileDialog.selectedFiles();
     if(csvSelectedFile.length > 0) {
         csvFileInputPath.setText(csvSelectedFile[0]);
@@ -202,16 +202,16 @@ templateFileLabel.setText('Template File: ');
 templateFileWidgetLayout.addWidget(templateFileLabel);
 
 const templateFileInputPath = new QLineEdit();
-templateFileInputPath.setObjectName('templateFileialog');
+templateFileInputPath.setObjectName('templateFileDialog');
 templateFileInputPath.setReadOnly(true);
 templateFileWidgetLayout.addWidget(templateFileInputPath);
 
-const templateFileDialog = new QFileDialog()
-const templateFileBrowseButton = new QPushButton()
+const templateFileDialog = new QFileDialog();
+templateFileDialog.setNameFilter('*.docx');
+const templateFileBrowseButton = new QPushButton();
 templateFileBrowseButton.setText('Browse')
 templateFileBrowseButton.addEventListener('clicked', () => {
     templateFileDialog.exec();
-    templateFileDialog.setNameFilter('Images (*.docx)');
     const templateSelectedFiles = templateFileDialog.selectedFiles();
     if(templateSelectedFiles.length > 0) {
         templateFileInputPath.setText(templateSelectedFiles[0]);
@@ -244,11 +244,8 @@ spinMovie.start();
 spinLabel.setMovie(spinMovie);
 spinLabel.hide();
 
-const label2 = new QLabel();
-label2.setText("World");
-label2.setInlineStyle(`
-  color: red;
-`);
+const messageLabel = new QLabel();
+messageLabel.hide();
 
 rootLayout.addWidget(logoLabel);
 rootLayout.addWidget(label);
@@ -257,16 +254,57 @@ rootLayout.addWidget(templateFileWidget);
 rootLayout.addWidget(outputFileWidget);
 rootLayout.addWidget(processButton);
 rootLayout.addWidget(spinLabel);
-//rootLayout.addWidget(label2);
+rootLayout.addWidget(messageLabel);
 win.setCentralWidget(centralWidget);
+
+function writeErrorMessage(errMesage: string) {
+    messageLabel.setText(errMesage);
+    messageLabel.setInlineStyle(`
+        color: red;
+    `);
+    messageLabel.show();
+}
+
+function handleResponse(_err: any) {
+    if(_err == null || _err == '') {
+        messageLabel.setText("Billing Sheets successfully processed");
+        messageLabel.setInlineStyle(`
+            color: green;
+        `);
+        messageLabel.show();
+        return;
+    }
+    writeErrorMessage(_err);
+}
+
+function areFieldsValid() {
+    if(csvFileInputPath.text() == null || csvFileInputPath.text() == '') {
+        writeErrorMessage("Field 'CSV File' can't be empty");
+        return false;
+    }
+    if(templateFileInputPath.text() == null || templateFileInputPath.text() == '') {
+        writeErrorMessage("Field 'Template File' can't be empty");
+        return false;
+    }
+    if(outputFileDialog.text() == null || outputFileDialog.text() == '') {
+        writeErrorMessage("Field 'Output File Pattern' can't be empty");
+        return false;
+    }
+    return true;
+}
 
 // Event handling
 processButton.addEventListener('clicked', (checked) => {
-    processButton.hide();
-    spinLabel.show();
-    processBilling(csvFileInputPath.text(), templateFileInputPath.text(), outputFileDialog.text());
-    processButton.show();
-    spinLabel.hide();
+    if(areFieldsValid()) {
+        messageLabel.hide();
+        processButton.hide();
+        spinLabel.show();
+        let _err = processBilling(csvFileInputPath.text(), templateFileInputPath.text(), outputFileDialog.text());
+        handleResponse(_err);
+        processButton.show();
+        spinLabel.hide();
+    }
+    
     // setTimeout(function() {
     //     processButton.show();
     //     spinLabel.hide();
@@ -308,7 +346,7 @@ win.setStyleSheet(
         flex-direction: row;
         font-size: 20px;
     }
-    #csvFileialog, #templateFileialog, #outputFileDialog  {
+    #csvFileDialog, #templateFileDialog, #outputFileDialog  {
         width: 250px;
     }
     #processButton {
