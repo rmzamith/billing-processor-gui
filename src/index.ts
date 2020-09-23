@@ -1,4 +1,4 @@
-import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap, QMovie, QFileDialog } from '@nodegui/nodegui';
+import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap, QMovie, QFileDialog, Option } from '@nodegui/nodegui';
 import favIcon from '../assets/favicon.png';
 import logoPath from '../assets/think-brq.png';
 import loadingSpinner from '../assets/ajax-loader.gif'
@@ -88,21 +88,24 @@ function evaluateOutputName(outputNamePattern :string, csvEntry :any) {
     return outputNamePattern;
 }
 
-function createOutputDir() {
+function createOutputDir(outputDirectoryPath:string) {
     var dt = dateTime.create();
-    var outputDir = "./billing_sheet_output_"+dt.format('Ymd_HMS');
+    var outputDir = "billing_sheet_output_"+dt.format('Ymd_HMS');
 
     if (!fs.existsSync(outputDir)){
-        fs.mkdirSync(outputDir);
+        fs.mkdirSync(outputDirectoryPath+"/"+outputDir);
     }
     return outputDir;
 }
 
 
 
-function processBilling(csvDataFilePath:string, templateFilePath:string, outputFileNamePattern:string) {
+function processBilling(csvDataFilePath:string, templateFilePath:string, outputDirectoryPath:string, outputFileNamePattern:string) {
     // INIT - TEMPLATE LOAD
     var content = fs.readFileSync(templateFilePath, 'binary');
+
+    //INIT - CREATE OUTPUT DIR
+    var outputDir = createOutputDir(outputDirectoryPath);
 
     // INIT - LOAD CSV
     const treatedCsvFilePath :string = removeFirstLineFromCSV(csvDataFilePath);
@@ -135,9 +138,8 @@ function processBilling(csvDataFilePath:string, templateFilePath:string, outputF
                             .generate({type: 'nodebuffer'});
                 
                 // INIT - SAVE FILE
-                var outputDir = createOutputDir();
                 var outputFileName = evaluateOutputName(outputFileNamePattern, element);
-                fs.writeFileSync(outputDir+"/"+outputFileName+'.docx', buf);
+                fs.writeFileSync(outputDirectoryPath+"/"+outputDir+"/"+outputFileName+'.docx', buf);
             });
         });
 
@@ -158,7 +160,7 @@ const rootLayout = new FlexLayout();
 centralWidget.setLayout(rootLayout);
 // Think logo
 const logoLabel = new QLabel();
-logoLabel.setObjectName("logoLabel")
+logoLabel.setObjectName("logoLabel");
 const logoImage = new QPixmap();
 logoImage.load(logoPath);
 logoLabel.setPixmap(logoImage);
@@ -184,14 +186,14 @@ csvFileWidgetLayout.addWidget(csvFileInputPath);
 const csvFileDialog = new QFileDialog();
 csvFileDialog.setNameFilter('*.csv');
 const csvFileBrowseButton = new QPushButton();
-csvFileBrowseButton.setText('Browse')
+csvFileBrowseButton.setText('Browse');
 csvFileBrowseButton.addEventListener('clicked', () => {
     csvFileDialog.exec();
     const csvSelectedFile = csvFileDialog.selectedFiles();
     if(csvSelectedFile.length > 0) {
         csvFileInputPath.setText(csvSelectedFile[0]);
     }
-})
+});
 csvFileWidgetLayout.addWidget(csvFileBrowseButton);
 // Template file widget
 const templateFileWidget = new QWidget();
@@ -211,15 +213,42 @@ templateFileWidgetLayout.addWidget(templateFileInputPath);
 const templateFileDialog = new QFileDialog();
 templateFileDialog.setNameFilter('*.docx');
 const templateFileBrowseButton = new QPushButton();
-templateFileBrowseButton.setText('Browse')
+templateFileBrowseButton.setText('Browse');
 templateFileBrowseButton.addEventListener('clicked', () => {
     templateFileDialog.exec();
     const templateSelectedFiles = templateFileDialog.selectedFiles();
     if(templateSelectedFiles.length > 0) {
         templateFileInputPath.setText(templateSelectedFiles[0]);
     }
-})
+});
 templateFileWidgetLayout.addWidget(templateFileBrowseButton);
+// Output directory widget
+const outputDirectoryWidget = new QWidget();
+const outputDirectoryWidgetLayout = new FlexLayout();
+outputDirectoryWidget.setObjectName('outputDirectoryWidget');
+outputDirectoryWidget.setLayout(outputDirectoryWidgetLayout);
+
+const outputDirectoryLabel = new QLabel();
+outputDirectoryLabel.setText('Output Directory: ');
+outputDirectoryWidgetLayout.addWidget(outputDirectoryLabel);
+
+const outputDirectoryInputPath = new QLineEdit();
+outputDirectoryInputPath.setObjectName('outputDirectoryDialog');
+outputDirectoryInputPath.setReadOnly(true);
+outputDirectoryWidgetLayout.addWidget(outputDirectoryInputPath);
+
+const outputDirectoryDialog = new QFileDialog();
+outputDirectoryDialog.setOption(Option.ShowDirsOnly);
+const outputDirectoryBrowseButton = new QPushButton();
+outputDirectoryBrowseButton.setText('Browse')
+outputDirectoryBrowseButton.addEventListener('clicked', () => {
+    outputDirectoryDialog.exec();
+    const templateSelectedFiles = outputDirectoryDialog.selectedFiles();
+    if(templateSelectedFiles.length > 0) {
+        outputDirectoryInputPath.setText(templateSelectedFiles[0]);
+    }
+});
+outputDirectoryWidgetLayout.addWidget(outputDirectoryBrowseButton);
 // Output file widget
 const outputFileWidget = new QWidget();
 const outputFileWidgetLayout = new FlexLayout();
@@ -253,6 +282,7 @@ rootLayout.addWidget(logoLabel);
 rootLayout.addWidget(label);
 rootLayout.addWidget(csvFileWidget);
 rootLayout.addWidget(templateFileWidget);
+rootLayout.addWidget(outputDirectoryWidget);
 rootLayout.addWidget(outputFileWidget);
 rootLayout.addWidget(processButton);
 rootLayout.addWidget(spinLabel);
@@ -288,6 +318,10 @@ function areFieldsValid() {
         writeErrorMessage("Field 'Template File' can't be empty");
         return false;
     }
+    if(outputDirectoryInputPath.text() == null || outputDirectoryInputPath.text() == '') {
+        writeErrorMessage("Field 'Output Directory' can't be empty");
+        return false;
+    }
     if(outputFileDialog.text() == null || outputFileDialog.text() == '') {
         writeErrorMessage("Field 'Output File Pattern' can't be empty");
         return false;
@@ -301,7 +335,11 @@ processButton.addEventListener('clicked', (checked) => {
         messageLabel.hide();
         processButton.hide();
         spinLabel.show();
-        let _err = processBilling(csvFileInputPath.text(), templateFileInputPath.text(), outputFileDialog.text());
+        let _err = processBilling(
+            csvFileInputPath.text(), 
+            templateFileInputPath.text(), 
+            outputDirectoryInputPath.text(), 
+            outputFileDialog.text());
         handleResponse(_err);
         processButton.show();
         spinLabel.hide();
@@ -320,7 +358,7 @@ win.setStyleSheet(
       height: '100%';
       align-items: 'center';
       justify-content: 'center';
-      height:350px;
+      height:380px;
       width:500px;
     }
     #programLabel {
@@ -342,13 +380,18 @@ win.setStyleSheet(
         flex-direction: row;
         font-size: 20px;
     }
+    #outputDirectoryWidget {
+        margin-left: 8px;
+        flex-direction: row;
+        font-size: 20px;
+    }
     #outputFileWidget {
         margin-top: 3px;
         margin-left: -92px;
         flex-direction: row;
         font-size: 20px;
     }
-    #csvFileDialog, #templateFileDialog, #outputFileDialog  {
+    #csvFileDialog, #templateFileDialog, #outputDirectoryDialog, #outputFileDialog  {
         width: 250px;
     }
     #processButton {
