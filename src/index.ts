@@ -1,4 +1,4 @@
-import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap, QMovie, QFileDialog, Option } from '@nodegui/nodegui';
+import { QMainWindow, QWidget, QLabel, FlexLayout, QPushButton, QIcon, QLineEdit, QPixmap, QMovie, QFileDialog, Option, FileMode } from '@nodegui/nodegui';
 import favIcon from '../assets/favicon.png';
 import logoPath from '../assets/think-brq.png';
 import loadingSpinner from '../assets/ajax-loader.gif'
@@ -11,6 +11,7 @@ const Docxtemplater = require('docxtemplater');
 const fs = require('fs');
 const csv = require('csv-parser');
 const dateTime = require('node-datetime');
+const path = require('path');
 
 // The error object contains additional information when logged with JSON.stringify (it contains a properties object containing all suberrors).
 function replaceErrors(key :any, value :any[]) {
@@ -25,16 +26,7 @@ function replaceErrors(key :any, value :any[]) {
 
 function errorHandler(error :any) {
     console.log(JSON.stringify({error: error}, replaceErrors));
-
-    if (error.properties && error.properties.errors instanceof Array) {
-        const errorMessages = error.properties.errors.map(function (error :any) {
-            return error.properties.explanation;
-        }).join("\n");
-        console.log('errorMessages', errorMessages);
-        // errorMessages is a humanly readable message looking like this :
-        // 'The tag beginning with "foobar" is unopened'
-    }
-    throw error;
+    return error;
 }
 
 function insertSpacesOnValuesFromKey(key: string, value: string) {
@@ -67,7 +59,7 @@ function removeFirstLineFromCSV(csvDataFilePath:string) {
     return treatedCsvFilePath;
 }
 
-function evaluateOutputName(outputNamePattern :string, csvEntry :any) {
+function evaluateOutputName(outputNamePattern :string, multipleEntries :boolean, csvEntry :any) {
     let matches = outputNamePattern.match(/{(.*?)\}/g);
     var diffEntriesOnName = false;
     if(matches != null) {
@@ -75,14 +67,14 @@ function evaluateOutputName(outputNamePattern :string, csvEntry :any) {
             const currKey = element.substring(1, element.length-1);
             var currVal = csvEntry[currKey];
             if(currVal == null) {
-                currVal = "NOT_FOUND";
+                currVal = "undefined";
             } else {
                 diffEntriesOnName = true;
             }
             outputNamePattern = outputNamePattern.replace(element,currVal);
         });
     }
-    if(!diffEntriesOnName) {
+    if(!diffEntriesOnName && multipleEntries) {
         outputNamePattern = outputNamePattern+Math.floor(Math.random() * 100000);
     }
     return outputNamePattern;
@@ -105,15 +97,17 @@ function processBilling(csvDataFilePath:string, templateFilePath:string, outputD
     var content = fs.readFileSync(templateFilePath, 'binary');
 
     //INIT - CREATE OUTPUT DIR
-    var outputDir = createOutputDir(outputDirectoryPath);
+    //var outputDir = createOutputDir(outputDirectoryPath);
 
     // INIT - LOAD CSV
     const treatedCsvFilePath :string = removeFirstLineFromCSV(csvDataFilePath);
     const results: any[] = [];
+    const _err: any[] = [];
     fs.createReadStream(treatedCsvFilePath)
         .pipe(csv())
         .on('data', (data :any) => results.push(data))
         .on('end', () => {
+            const multipleEntries = results.length > 1;
             results.forEach(element => {
                 // INIT - DOC VAR REPLACEMENT
                 appendTabsToKeepFormat(element);
@@ -122,7 +116,9 @@ function processBilling(csvDataFilePath:string, templateFilePath:string, outputD
                 try {
                     doc = new Docxtemplater(zip);
                 } catch(error) {
-                    errorHandler(error);
+                    console.log("Assigning error variable.");
+                    _err.push(errorHandler(error));
+                    return;
                 }
 
                 doc.setData(element);
@@ -131,25 +127,71 @@ function processBilling(csvDataFilePath:string, templateFilePath:string, outputD
                     doc.render()
                 }
                 catch (error) {
-                    errorHandler(error);
+                    console.log("Assigning error variable.");
+                    _err.push(errorHandler(error));
+                    return;
                 }
                 
                 var buf = doc.getZip()
                             .generate({type: 'nodebuffer'});
                 
                 // INIT - SAVE FILE
-                var outputFileName = evaluateOutputName(outputFileNamePattern, element);
-                fs.writeFileSync(outputDirectoryPath+"/"+outputDir+"/"+outputFileName+'.docx', buf);
+                var outputFileName = evaluateOutputName(outputFileNamePattern, multipleEntries, element);
+                fs.writeFileSync(outputDirectoryPath+"/"+outputFileName+'.docx', buf);
+                console.log("Processed.")
             });
+            console.log("Deleting CSV copy.");
+            fs.unlinkSync(treatedCsvFilePath);
+            handleResponse(_err.length > 0 ? _err[0] : null);
+            processButton.show();
+            spinLabel.hide();
         });
-
-    fs.unlinkSync(treatedCsvFilePath);
-    
 }
 ////////////////////////////////// logic /////////////////////////////////////////
 
+let csvDefaultFile:string = '';
+let templateDefaultFile:string = '';
+let outputFolder:string = '';
+
+function loadConfig() {
+    const configPath = './defaults.cfg';
+    if(fs.existsSync(configPath)) {
+        var cfgData = fs.readFileSync(configPath);
+        cfgData = cfgData.toString();
+
+        var lines = cfgData.split('\n');
+        for(var line = 0; line < lines.length; line++){
+            var res = lines[line].split("=");
+            if(res.length != 2) {
+                handleResponse("defaults.cfg config file contain format errors");
+                return;
+            }
+            loadDefaultInputs(res[0].trim(), res[1].trim())
+        }
+    }
+
+    console.log('CSV: '+csvDefaultFile);
+    console.log('template: '+templateDefaultFile);
+    console.log('output: '+outputFolder);
+}
+
+function loadDefaultInputs(inputName :string, inputVal :string) {
+    if(fs.existsSync(inputVal)) {
+        if(inputName === 'csv_directory') {
+            csvDefaultFile = inputVal;
+        }
+        if(inputName === 'template_file') {
+            templateDefaultFile = inputVal;
+        }
+        if(inputName === 'output_directory') {
+            outputFolder = inputVal;
+        }
+    }
+}
+
+loadConfig();
 const win = new QMainWindow();
-win.setWindowTitle("Billing Sheet Processor");
+win.setWindowTitle("Template Processor");
 const icon = new QIcon (favIcon);
 win.setWindowIcon (icon);
 
@@ -167,7 +209,7 @@ logoLabel.setPixmap(logoImage);
 // Program label
 const label = new QLabel();
 label.setObjectName("programLabel");
-label.setText("Billing Processor");
+label.setText("Template Processor");
 // CSV file widget
 const csvFileWidget = new QWidget();
 const csvFileWidgetLayout = new FlexLayout();
@@ -183,8 +225,7 @@ csvFileInputPath.setObjectName('csvFileDialog');
 csvFileInputPath.setReadOnly(true);
 csvFileWidgetLayout.addWidget(csvFileInputPath);
 
-const csvFileDialog = new QFileDialog();
-csvFileDialog.setNameFilter('*.csv');
+const csvFileDialog = new QFileDialog(centralWidget, "Select CSV File", csvDefaultFile, '*.csv');
 const csvFileBrowseButton = new QPushButton();
 csvFileBrowseButton.setText('Browse');
 csvFileBrowseButton.addEventListener('clicked', () => {
@@ -208,10 +249,10 @@ templateFileWidgetLayout.addWidget(templateFileLabel);
 const templateFileInputPath = new QLineEdit();
 templateFileInputPath.setObjectName('templateFileDialog');
 templateFileInputPath.setReadOnly(true);
+templateFileInputPath.setText(templateDefaultFile);
 templateFileWidgetLayout.addWidget(templateFileInputPath);
 
-const templateFileDialog = new QFileDialog();
-templateFileDialog.setNameFilter('*.docx');
+const templateFileDialog = new QFileDialog(centralWidget, "Select DOCX File", templateDefaultFile, '*.docx');
 const templateFileBrowseButton = new QPushButton();
 templateFileBrowseButton.setText('Browse');
 templateFileBrowseButton.addEventListener('clicked', () => {
@@ -235,9 +276,11 @@ outputDirectoryWidgetLayout.addWidget(outputDirectoryLabel);
 const outputDirectoryInputPath = new QLineEdit();
 outputDirectoryInputPath.setObjectName('outputDirectoryDialog');
 outputDirectoryInputPath.setReadOnly(true);
+outputDirectoryInputPath.setText(outputFolder);
 outputDirectoryWidgetLayout.addWidget(outputDirectoryInputPath);
 
-const outputDirectoryDialog = new QFileDialog();
+const outputDirectoryDialog = new QFileDialog(centralWidget, "Select Output Folder", outputFolder);
+outputDirectoryDialog.setFileMode(FileMode.Directory);
 outputDirectoryDialog.setOption(Option.ShowDirsOnly);
 const outputDirectoryBrowseButton = new QPushButton();
 outputDirectoryBrowseButton.setText('Browse')
@@ -256,7 +299,7 @@ outputFileWidget.setObjectName('outputFileWidget');
 outputFileWidget.setLayout(outputFileWidgetLayout);
 
 const outputFileLabel = new QLabel();
-outputFileLabel.setText('Output File Pattern: ');
+outputFileLabel.setText('Output File Name: ');
 outputFileWidgetLayout.addWidget(outputFileLabel);
 
 const outputFileDialog = new QLineEdit();
@@ -293,20 +336,32 @@ function writeErrorMessage(errMesage: string) {
     messageLabel.setText(errMesage);
     messageLabel.setInlineStyle(`
         color: red;
+        font-size: 27px;
     `);
     messageLabel.show();
 }
 
 function handleResponse(_err: any) {
     if(_err == null || _err == '') {
-        messageLabel.setText("Billing Sheets successfully processed");
+        messageLabel.setText("Template successfully processed");
         messageLabel.setInlineStyle(`
-            color: green;
+            color: blue;
+            font-size: 27px;
         `);
         messageLabel.show();
         return;
     }
-    writeErrorMessage(_err);
+    if(typeof _err === 'string') {
+        writeErrorMessage(_err);
+    } else if (_err.properties && _err.properties.errors instanceof Array) {
+        const errorMessages = _err.properties.errors.map(function (error :any) {
+            return error.properties.explanation;
+        }).join("\n");
+        writeErrorMessage(errorMessages);
+    }
+    else {
+        writeErrorMessage("Error ocurred while processing.");
+    }
 }
 
 function areFieldsValid() {
@@ -314,14 +369,25 @@ function areFieldsValid() {
         writeErrorMessage("Field 'CSV File' can't be empty");
         return false;
     }
+    else if(!fs.existsSync(csvFileInputPath.text()) || !csvFileInputPath.text().includes(".csv")) {
+        writeErrorMessage("'CSV File' not found");
+        return false;
+    }
+
     if(templateFileInputPath.text() == null || templateFileInputPath.text() == '') {
         writeErrorMessage("Field 'Template File' can't be empty");
         return false;
     }
+    else if(!fs.existsSync(templateFileInputPath.text()) || !templateFileInputPath.text().includes(".docx")) {
+        writeErrorMessage("'Template File' not found");
+        return false;
+    }
+
     if(outputDirectoryInputPath.text() == null || outputDirectoryInputPath.text() == '') {
         writeErrorMessage("Field 'Output Directory' can't be empty");
         return false;
     }
+
     if(outputFileDialog.text() == null || outputFileDialog.text() == '') {
         writeErrorMessage("Field 'Output File Pattern' can't be empty");
         return false;
@@ -335,20 +401,19 @@ processButton.addEventListener('clicked', (checked) => {
         messageLabel.hide();
         processButton.hide();
         spinLabel.show();
-        let _err = processBilling(
-            csvFileInputPath.text(), 
-            templateFileInputPath.text(), 
-            outputDirectoryInputPath.text(), 
-            outputFileDialog.text());
-        handleResponse(_err);
-        processButton.show();
-        spinLabel.hide();
+        try {
+            processBilling(
+                csvFileInputPath.text(), 
+                templateFileInputPath.text(), 
+                outputDirectoryInputPath.text(), 
+                outputFileDialog.text());
+        } catch (error) {
+            handleResponse(error);
+            processButton.show();
+            spinLabel.hide();
+        }
+        
     }
-    
-    // setTimeout(function() {
-    //     processButton.show();
-    //     spinLabel.hide();
-    // }, 3000);
 });
 
 win.setStyleSheet(
@@ -358,8 +423,8 @@ win.setStyleSheet(
       height: '100%';
       align-items: 'center';
       justify-content: 'center';
-      height:380px;
-      width:500px;
+      height:420px;
+      width:650px;
     }
     #programLabel {
       font-size: 20px;
@@ -381,13 +446,13 @@ win.setStyleSheet(
         font-size: 20px;
     }
     #outputDirectoryWidget {
-        margin-left: 8px;
+        margin-left: 7px;
         flex-direction: row;
         font-size: 20px;
     }
     #outputFileWidget {
         margin-top: 3px;
-        margin-left: -92px;
+        margin-left: -83px;
         flex-direction: row;
         font-size: 20px;
     }
