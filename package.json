@@ -13,7 +13,7 @@
   "dependencies": {
     "@nodegui/nodegui": "^0.25.0",
     "csv-parser": "^2.3.3",
-    "docxtemplater": "^3.19.3",
+    "docxtemplater": "^3.31.5",
     "node-datetime": "^2.1.2",
     "pizzip": "^3.0.6"
   },
